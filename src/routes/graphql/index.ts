@@ -1,9 +1,11 @@
 import { FastifyPluginAsyncTypebox } from '@fastify/type-provider-typebox';
 import { createGqlResponseSchema, gqlResponseSchema } from './schemas.js';
-import { graphql } from 'graphql';
+import { graphql, GraphQLArgs } from 'graphql';
+import { getGraphQLSchema } from './gql-schema.js';
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   const { prisma } = fastify;
+  const schema = getGraphQLSchema(prisma);
 
   fastify.route({
     url: '/',
@@ -15,7 +17,12 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async handler(req) {
-      // return graphql();
+      const args: GraphQLArgs = {
+        schema,
+        source: req.body.query
+      };
+
+      return graphql(args);
     },
   });
 };
