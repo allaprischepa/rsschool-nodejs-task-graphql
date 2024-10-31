@@ -10,7 +10,7 @@ import {
 } from 'graphql';
 import { UUIDType } from './types/uuid.js';
 import { MemberTypeId } from '../member-types/schemas.js';
-import { PrismaClient, Profile, User } from '@prisma/client';
+import { MemberType, Post, PrismaClient, Profile, User } from '@prisma/client';
 
 type GQLTypes = {
   MemberTypeIdEnum: GraphQLEnumType;
@@ -35,7 +35,11 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       id: { type: MemberTypeIdEnum },
       discount: { type: GraphQLFloat },
       postsLimitPerMonth: { type: GraphQLInt },
-      profiles: { type: new GraphQLList(ProfileType) },
+      profiles: {
+        type: new GraphQLList(ProfileType),
+        resolve: (parent: MemberType) =>
+          prisma.profile.findMany({ where: { memberTypeId: parent.id } }),
+      },
     }),
   });
 
@@ -66,7 +70,11 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       id: { type: UUIDType },
       title: { type: GraphQLString },
       content: { type: GraphQLString },
-      author: { type: UserType },
+      author: {
+        type: UserType,
+        resolve: (parent: Post) =>
+          prisma.user.findUnique({ where: { id: parent.authorId } }),
+      },
       authorId: { type: UUIDType },
     }),
   });
@@ -90,12 +98,16 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       userSubscribedTo: {
         type: new GraphQLList(UserType),
         resolve: async (parent: User) =>
-          prisma.subscribersOnAuthors.findMany({ where: { subscriberId: parent.id } }),
+          prisma.user.findMany({
+            where: { subscribedToUser: { some: { subscriberId: parent.id } } },
+          }),
       },
       subscribedToUser: {
         type: new GraphQLList(UserType),
         resolve: async (parent: User) =>
-          prisma.subscribersOnAuthors.findMany({ where: { authorId: parent.id } }),
+          prisma.user.findMany({
+            where: { userSubscribedTo: { some: { authorId: parent.id } } },
+          }),
       },
     }),
   });
