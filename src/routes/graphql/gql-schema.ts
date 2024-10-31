@@ -271,6 +271,7 @@ const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectTy
   return new GraphQLObjectType({
     name: 'Mutation',
     fields: {
+      // Create
       createUser: {
         type: UserType,
         args: {
@@ -294,6 +295,37 @@ const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectTy
         },
         resolve: async (_, { dto }: { dto: Prisma.ProfileCreateInput }) =>
           prisma.profile.create({ data: dto }),
+      },
+      // Delete
+      deleteUser: {
+        type: GraphQLString,
+        args: {
+          id: { type: UUIDType },
+        },
+        resolve: async (_, { id }: { id: string }) => {
+          await prisma.user.delete({ where: { id } });
+          return `User id: ${id} is deleted`;
+        },
+      },
+      deletePost: {
+        type: GraphQLString,
+        args: {
+          id: { type: UUIDType },
+        },
+        resolve: async (_, { id }: { id: string }) => {
+          await prisma.post.delete({ where: { id } });
+          return `Post id: ${id} is deleted`;
+        },
+      },
+      deleteProfile: {
+        type: GraphQLString,
+        args: {
+          id: { type: UUIDType },
+        },
+        resolve: async (_, { id }: { id: string }) => {
+          await prisma.profile.delete({ where: { id } });
+          return `Profile id: ${id} is deleted`;
+        },
       },
     },
   });
