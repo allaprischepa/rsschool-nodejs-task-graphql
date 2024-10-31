@@ -256,7 +256,7 @@ const getQueryType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType 
 };
 
 const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType => {
-  const { MemberTypeIdEnum, MemberType, ProfileType, PostType, UserType } = types;
+  const { ProfileType, PostType, UserType } = types;
   const {
     ChangePostInput,
     ChangeProfileInput,
@@ -325,6 +325,75 @@ const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectTy
         resolve: async (_, { id }: { id: string }) => {
           await prisma.profile.delete({ where: { id } });
           return `Profile id: ${id} is deleted`;
+        },
+      },
+      // Change
+      changeUser: {
+        type: UserType,
+        args: {
+          id: { type: UUIDType },
+          dto: { type: ChangeUserInput },
+        },
+        resolve: async (_, { id, dto }: { id: string; dto: Prisma.UserCreateInput }) =>
+          prisma.user.update({ where: { id }, data: dto }),
+      },
+      changePost: {
+        type: PostType,
+        args: {
+          id: { type: UUIDType },
+          dto: { type: ChangePostInput },
+        },
+        resolve: async (_, { id, dto }: { id: string; dto: Prisma.PostCreateInput }) =>
+          prisma.post.update({ where: { id }, data: dto }),
+      },
+      changeProfile: {
+        type: ProfileType,
+        args: {
+          id: { type: UUIDType },
+          dto: { type: ChangeProfileInput },
+        },
+        resolve: async (_, { id, dto }: { id: string; dto: Prisma.ProfileCreateInput }) =>
+          prisma.profile.update({ where: { id }, data: dto }),
+      },
+      // Subscribe / unsubscribe
+      subscribeTo: {
+        type: GraphQLString,
+        args: {
+          userId: { type: UUIDType },
+          authorId: { type: UUIDType },
+        },
+        resolve: async (
+          _,
+          { userId, authorId }: { userId: string; authorId: string },
+        ) => {
+          await prisma.subscribersOnAuthors.create({
+            data: {
+              subscriberId: userId,
+              authorId: authorId,
+            },
+          });
+          return `User id: ${userId} subscribed to author id: ${authorId}`;
+        },
+      },
+      unsubscribeFrom: {
+        type: GraphQLString,
+        args: {
+          userId: { type: UUIDType },
+          authorId: { type: UUIDType },
+        },
+        resolve: async (
+          _,
+          { userId, authorId }: { userId: string; authorId: string },
+        ) => {
+          await prisma.subscribersOnAuthors.delete({
+            where: {
+              subscriberId_authorId: {
+                subscriberId: userId,
+                authorId: authorId,
+              },
+            },
+          });
+          return `User id: ${userId} unsubscribed from author id: ${authorId}`;
         },
       },
     },
