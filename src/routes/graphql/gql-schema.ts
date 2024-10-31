@@ -2,6 +2,7 @@ import {
   GraphQLBoolean,
   GraphQLEnumType,
   GraphQLFloat,
+  GraphQLInputObjectType,
   GraphQLInt,
   GraphQLList,
   GraphQLObjectType,
@@ -10,7 +11,7 @@ import {
 } from 'graphql';
 import { UUIDType } from './types/uuid.js';
 import { MemberTypeId } from '../member-types/schemas.js';
-import { MemberType, Post, PrismaClient, Profile, User } from '@prisma/client';
+import { MemberType, Post, Prisma, PrismaClient, Profile, User } from '@prisma/client';
 
 type GQLTypes = {
   MemberTypeIdEnum: GraphQLEnumType;
@@ -18,6 +19,15 @@ type GQLTypes = {
   ProfileType: GraphQLObjectType;
   PostType: GraphQLObjectType;
   UserType: GraphQLObjectType;
+};
+
+type GQLInputTypes = {
+  ChangePostInput: GraphQLInputObjectType;
+  ChangeProfileInput: GraphQLInputObjectType;
+  ChangeUserInput: GraphQLInputObjectType;
+  CreatePostInput: GraphQLInputObjectType;
+  CreateProfileInput: GraphQLInputObjectType;
+  CreateUserInput: GraphQLInputObjectType;
 };
 
 const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
@@ -121,6 +131,71 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
   };
 };
 
+const getGraphQLInputTypes = (types: GQLTypes): GQLInputTypes => {
+  const { MemberTypeIdEnum } = types;
+
+  const ChangePostInput = new GraphQLInputObjectType({
+    name: 'ChangePostInput',
+    fields: {
+      title: { type: GraphQLString },
+      content: { type: GraphQLString },
+    },
+  });
+
+  const ChangeProfileInput = new GraphQLInputObjectType({
+    name: 'ChangeProfileInput',
+    fields: {
+      isMale: { type: GraphQLBoolean },
+      yearOfBirth: { type: GraphQLInt },
+      memberTypeId: { type: MemberTypeIdEnum },
+    },
+  });
+
+  const ChangeUserInput = new GraphQLInputObjectType({
+    name: 'ChangeUserInput',
+    fields: {
+      name: { type: GraphQLString },
+      balance: { type: GraphQLFloat },
+    },
+  });
+
+  const CreatePostInput = new GraphQLInputObjectType({
+    name: 'CreatePostInput',
+    fields: {
+      title: { type: GraphQLString },
+      content: { type: GraphQLString },
+      authorId: { type: UUIDType },
+    },
+  });
+
+  const CreateProfileInput = new GraphQLInputObjectType({
+    name: 'CreateProfileInput',
+    fields: {
+      isMale: { type: GraphQLBoolean },
+      yearOfBirth: { type: GraphQLInt },
+      userId: { type: UUIDType },
+      memberTypeId: { type: MemberTypeIdEnum },
+    },
+  });
+
+  const CreateUserInput = new GraphQLInputObjectType({
+    name: 'CreateUserInput',
+    fields: {
+      name: { type: GraphQLString },
+      balance: { type: GraphQLFloat },
+    },
+  });
+
+  return {
+    ChangePostInput,
+    ChangeProfileInput,
+    ChangeUserInput,
+    CreatePostInput,
+    CreateProfileInput,
+    CreateUserInput,
+  };
+};
+
 const getQueryType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType => {
   const { MemberTypeIdEnum, MemberType, ProfileType, PostType, UserType } = types;
 
@@ -180,13 +255,58 @@ const getQueryType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType 
   });
 };
 
+const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType => {
+  const { MemberTypeIdEnum, MemberType, ProfileType, PostType, UserType } = types;
+  const {
+    ChangePostInput,
+    ChangeProfileInput,
+    ChangeUserInput,
+    CreatePostInput,
+    CreateProfileInput,
+    CreateUserInput,
+  } = getGraphQLInputTypes(types);
+
+  GraphQLInputObjectType;
+
+  return new GraphQLObjectType({
+    name: 'Mutation',
+    fields: {
+      createUser: {
+        type: UserType,
+        args: {
+          dto: { type: CreateUserInput },
+        },
+        resolve: async (_, { dto }: { dto: Prisma.UserCreateInput }) =>
+          prisma.user.create({ data: dto }),
+      },
+      createPost: {
+        type: PostType,
+        args: {
+          dto: { type: CreatePostInput },
+        },
+        resolve: async (_, { dto }: { dto: Prisma.PostCreateInput }) =>
+          prisma.post.create({ data: dto }),
+      },
+      createProfile: {
+        type: ProfileType,
+        args: {
+          dto: { type: CreateProfileInput },
+        },
+        resolve: async (_, { dto }: { dto: Prisma.ProfileCreateInput }) =>
+          prisma.profile.create({ data: dto }),
+      },
+    },
+  });
+};
+
 export const getGraphQLSchema = (prisma: PrismaClient) => {
   const types = getGraphQLTypes(prisma);
   const QueryType = getQueryType(prisma, types);
+  const MutationType = getMutationType(prisma, types);
 
   const schema = new GraphQLSchema({
     query: QueryType,
-    // mutation: MutationType,
+    mutation: MutationType,
   });
 
   return schema;
