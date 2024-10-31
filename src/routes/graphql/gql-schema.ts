@@ -64,8 +64,20 @@ export const getGraphQLSchema = (prisma: PrismaClient) => {
     fields: {
       users: {
         type: new GraphQLList(UserType),
-        resolve: async () => prisma .user.findMany(),
+        resolve: async () => prisma.user.findMany(),
       },
+      memberTypes: {
+        type: new GraphQLList(MemberType),
+        resolve: async () => prisma.memberType.findMany(),
+      },
+      posts: {
+        type: new GraphQLList(PostType),
+        resolve: async () => prisma.post.findMany(),
+      },
+      profiles: {
+        type: new GraphQLList(ProfileType),
+        resolve: async () => prisma.profile.findMany(),
+      }
     },
   });
 
