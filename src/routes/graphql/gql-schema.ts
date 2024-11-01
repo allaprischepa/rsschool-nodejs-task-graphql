@@ -12,6 +12,7 @@ import {
 import { UUIDType } from './types/uuid.js';
 import { MemberTypeId } from '../member-types/schemas.js';
 import { MemberType, Post, Prisma, PrismaClient, Profile, User } from '@prisma/client';
+import { createLoaders, Loaders } from './loaders.js';
 
 type GQLTypes = {
   MemberTypeIdEnum: GraphQLEnumType;
@@ -30,7 +31,17 @@ type GQLInputTypes = {
   CreateUserInput: GraphQLInputObjectType;
 };
 
-const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
+const getGraphQLTypes = (prisma: PrismaClient, loaders: Loaders): GQLTypes => {
+  const {
+    profilesByMemberTypeIdLoader,
+    postsByAuthorIdLoader,
+    userSubscribedToLoader,
+    subscribedToUserLoader,
+    usersLoader,
+    memberTypesLoader,
+    profilesByUserIdLoader,
+  } = loaders;
+
   const MemberTypeIdEnum = new GraphQLEnumType({
     name: 'MemberTypeId',
     values: {
@@ -47,8 +58,7 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       postsLimitPerMonth: { type: GraphQLInt },
       profiles: {
         type: new GraphQLList(ProfileType),
-        resolve: (parent: MemberType) =>
-          prisma.profile.findMany({ where: { memberTypeId: parent.id } }),
+        resolve: (parent: MemberType) => profilesByMemberTypeIdLoader.load(parent.id),
       },
     }),
   });
@@ -61,14 +71,12 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       yearOfBirth: { type: GraphQLInt },
       user: {
         type: UserType,
-        resolve: async (parent: Profile) =>
-          prisma.user.findUnique({ where: { id: parent.userId } }),
+        resolve: async (parent: Profile) => usersLoader.load(parent.userId),
       },
       userId: { type: UUIDType },
       memberType: {
         type: MemberType,
-        resolve: async (parent: Profile) =>
-          prisma.memberType.findUnique({ where: { id: parent.memberTypeId } }),
+        resolve: async (parent: Profile) => memberTypesLoader.load(parent.memberTypeId),
       },
       memberTypeId: { type: MemberTypeIdEnum },
     }),
@@ -82,8 +90,7 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       content: { type: GraphQLString },
       author: {
         type: UserType,
-        resolve: (parent: Post) =>
-          prisma.user.findUnique({ where: { id: parent.authorId } }),
+        resolve: (parent: Post) => usersLoader.load(parent.authorId),
       },
       authorId: { type: UUIDType },
     }),
@@ -97,27 +104,19 @@ const getGraphQLTypes = (prisma: PrismaClient): GQLTypes => {
       balance: { type: GraphQLFloat },
       profile: {
         type: ProfileType,
-        resolve: async (parent: User) =>
-          prisma.profile.findUnique({ where: { userId: parent.id } }),
+        resolve: async (parent: User) => profilesByUserIdLoader.load(parent.id),
       },
       posts: {
         type: new GraphQLList(PostType),
-        resolve: async (parent: User) =>
-          prisma.post.findMany({ where: { authorId: parent.id } }),
+        resolve: async (parent: User) => postsByAuthorIdLoader.load(parent.id),
       },
       userSubscribedTo: {
         type: new GraphQLList(UserType),
-        resolve: async (parent: User) =>
-          prisma.user.findMany({
-            where: { subscribedToUser: { some: { subscriberId: parent.id } } },
-          }),
+        resolve: async (parent: User) => userSubscribedToLoader.load(parent.id),
       },
       subscribedToUser: {
         type: new GraphQLList(UserType),
-        resolve: async (parent: User) =>
-          prisma.user.findMany({
-            where: { userSubscribedTo: { some: { authorId: parent.id } } },
-          }),
+        resolve: async (parent: User) => subscribedToUserLoader.load(parent.id),
       },
     }),
   });
@@ -196,27 +195,54 @@ const getGraphQLInputTypes = (types: GQLTypes): GQLInputTypes => {
   };
 };
 
-const getQueryType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType => {
+const getQueryType = (
+  prisma: PrismaClient,
+  types: GQLTypes,
+  loaders: Loaders,
+): GraphQLObjectType => {
   const { MemberTypeIdEnum, MemberType, ProfileType, PostType, UserType } = types;
+  const { usersLoader, memberTypesLoader, postsLoader, profilesLoader } = loaders;
 
   return new GraphQLObjectType({
     name: 'Query',
     fields: {
       users: {
         type: new GraphQLList(UserType),
-        resolve: async () => prisma.user.findMany(),
+        resolve: async () => {
+          const allUsers = await prisma.user.findMany();
+          allUsers.forEach((user) => usersLoader.prime(user.id, user));
+
+          return allUsers;
+        },
       },
       memberTypes: {
         type: new GraphQLList(MemberType),
-        resolve: async () => prisma.memberType.findMany(),
+        resolve: async () => {
+          const allMemberTypes = await prisma.memberType.findMany();
+          allMemberTypes.forEach((memberType) =>
+            memberTypesLoader.prime(memberType.id, memberType),
+          );
+
+          return allMemberTypes;
+        },
       },
       posts: {
         type: new GraphQLList(PostType),
-        resolve: async () => prisma.post.findMany(),
+        resolve: async () => {
+          const allPosts = await prisma.post.findMany();
+          allPosts.forEach((post) => postsLoader.prime(post.id, post));
+
+          return allPosts;
+        },
       },
       profiles: {
         type: new GraphQLList(ProfileType),
-        resolve: async () => prisma.profile.findMany(),
+        resolve: async () => {
+          const allProfiles = await prisma.profile.findMany();
+          allProfiles.forEach((profile) => profilesLoader.prime(profile.id, profile));
+
+          return allProfiles;
+        },
       },
 
       user: {
@@ -224,32 +250,28 @@ const getQueryType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectType 
         args: {
           id: { type: UUIDType },
         },
-        resolve: async (_, { id }: { id: string }) =>
-          prisma.user.findUnique({ where: { id } }),
+        resolve: async (_, { id }: { id: string }) => usersLoader.load(id),
       },
       memberType: {
         type: MemberType,
         args: {
           id: { type: MemberTypeIdEnum },
         },
-        resolve: async (_, { id }: { id: string }) =>
-          prisma.memberType.findUnique({ where: { id } }),
+        resolve: async (_, { id }: { id: string }) => memberTypesLoader.load(id),
       },
       post: {
         type: PostType,
         args: {
           id: { type: UUIDType },
         },
-        resolve: async (_, { id }: { id: string }) =>
-          prisma.post.findUnique({ where: { id } }),
+        resolve: async (_, { id }: { id: string }) => postsLoader.load(id),
       },
       profile: {
         type: ProfileType,
         args: {
           id: { type: UUIDType },
         },
-        resolve: async (_, { id }: { id: string }) =>
-          prisma.profile.findUnique({ where: { id } }),
+        resolve: async (_, { id }: { id: string }) => profilesLoader.load(id),
       },
     },
   });
@@ -401,8 +423,9 @@ const getMutationType = (prisma: PrismaClient, types: GQLTypes): GraphQLObjectTy
 };
 
 export const getGraphQLSchema = (prisma: PrismaClient) => {
-  const types = getGraphQLTypes(prisma);
-  const QueryType = getQueryType(prisma, types);
+  const loaders = createLoaders(prisma);
+  const types = getGraphQLTypes(prisma, loaders);
+  const QueryType = getQueryType(prisma, types, loaders);
   const MutationType = getMutationType(prisma, types);
 
   const schema = new GraphQLSchema({

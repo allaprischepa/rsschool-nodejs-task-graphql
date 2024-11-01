@@ -13,7 +13,6 @@ import depthLimit from 'graphql-depth-limit';
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   const { prisma } = fastify;
-  const schema = getGraphQLSchema(prisma);
 
   fastify.route({
     url: '/',
@@ -25,6 +24,7 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async handler(req) {
+      const schema = getGraphQLSchema(prisma);
       const { query: source, variables: variableValues } = req.body;
       let document: DocumentNode;
       const rules = [...specifiedRules, depthLimit(5)];
