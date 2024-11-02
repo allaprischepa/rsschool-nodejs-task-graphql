@@ -10,9 +10,17 @@ import {
 } from 'graphql';
 import { getGraphQLSchema } from './gql-schema.js';
 import depthLimit from 'graphql-depth-limit';
+import { createLoaders, Loaders } from './loaders.js';
+import { PrismaClient } from '@prisma/client';
+
+export interface Context {
+  prisma: PrismaClient;
+  loaders: Loaders;
+}
 
 const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
   const { prisma } = fastify;
+  const schema = getGraphQLSchema();
 
   fastify.route({
     url: '/',
@@ -24,11 +32,12 @@ const plugin: FastifyPluginAsyncTypebox = async (fastify) => {
       },
     },
     async handler(req) {
-      const schema = getGraphQLSchema(prisma);
+      const loaders = createLoaders(prisma);
+      const contextValue: Context = { prisma, loaders };
       const { query: source, variables: variableValues } = req.body;
       let document: DocumentNode;
       const rules = [...specifiedRules, depthLimit(5)];
-      const args: GraphQLArgs = { schema, source, variableValues };
+      const args: GraphQLArgs = { schema, source, variableValues, contextValue };
 
       try {
         document = parse(source);
