@@ -13,6 +13,7 @@ import { UUIDType } from './types/uuid.js';
 import { MemberTypeId } from '../member-types/schemas.js';
 import { MemberType, Post, Prisma, PrismaClient, Profile, User } from '@prisma/client';
 import { createLoaders, Loaders } from './loaders.js';
+import { parseResolveInfo, ResolveTree, simplify } from 'graphql-parse-resolve-info';
 
 type GQLTypes = {
   MemberTypeIdEnum: GraphQLEnumType;
@@ -30,6 +31,10 @@ type GQLInputTypes = {
   CreateProfileInput: GraphQLInputObjectType;
   CreateUserInput: GraphQLInputObjectType;
 };
+
+interface FieldNode {
+  fieldsByTypeName?: { [key: string]: ResolveTree };
+}
 
 const getGraphQLTypes = (prisma: PrismaClient, loaders: Loaders): GQLTypes => {
   const {
@@ -201,16 +206,60 @@ const getQueryType = (
   loaders: Loaders,
 ): GraphQLObjectType => {
   const { MemberTypeIdEnum, MemberType, ProfileType, PostType, UserType } = types;
-  const { usersLoader, memberTypesLoader, postsLoader, profilesLoader } = loaders;
+  const {
+    usersLoader,
+    memberTypesLoader,
+    postsLoader,
+    profilesLoader,
+    userSubscribedToLoader,
+    subscribedToUserLoader,
+  } = loaders;
 
   return new GraphQLObjectType({
     name: 'Query',
     fields: {
       users: {
         type: new GraphQLList(UserType),
-        resolve: async () => {
-          const allUsers = await prisma.user.findMany();
-          allUsers.forEach((user) => usersLoader.prime(user.id, user));
+        resolve: async (_source, _args, _context, info) => {
+          const parsedInfo = parseResolveInfo(info);
+          const include: {
+            userSubscribedTo?: boolean;
+            subscribedToUser?: boolean;
+          } = {};
+
+          if (parsedInfo) {
+            const simplifiedInfo = simplify(parsedInfo as ResolveTree, UserType);
+            const fields: { [key: string]: FieldNode } = simplifiedInfo.fields;
+            if (fields.userSubscribedTo) include['userSubscribedTo'] = true;
+            if (fields.subscribedToUser) include['subscribedToUser'] = true;
+          }
+
+          const allUsers = await prisma.user.findMany({ include });
+          allUsers.forEach((user) => {
+            usersLoader.prime(user.id, user);
+
+            // Add userSubscribedTo to cache
+            if (include.userSubscribedTo && user.userSubscribedTo) {
+              const userSubscribedToIds = user.userSubscribedTo.map(
+                (sub) => sub.authorId,
+              );
+              const userSubscribedToArr = allUsers.filter((user) =>
+                userSubscribedToIds.includes(user.id),
+              );
+              userSubscribedToLoader.prime(user.id, userSubscribedToArr);
+            }
+
+            // Add subscribedToUser to cache
+            if (include.subscribedToUser && user.subscribedToUser) {
+              const subscribedToUserIds = user.subscribedToUser.map(
+                (sub) => sub.subscriberId,
+              );
+              const subscribedToUserArr = allUsers.filter((user) =>
+                subscribedToUserIds.includes(user.id),
+              );
+              subscribedToUserLoader.prime(user.id, subscribedToUserArr);
+            }
+          });
 
           return allUsers;
         },
